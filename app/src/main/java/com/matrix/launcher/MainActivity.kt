@@ -29,7 +29,7 @@ import com.matrix.launcher.ui.theme.MatrixTheme
 class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
-    private var visible by mutableStateOf(false)
+    private var uiVisible by mutableStateOf(false)
 
     private val voice by lazy {
         VoiceController(
@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
             val s by vm.settings.collectAsState()
             val systemReduce = systemReducesMotion()
             val fx = Fx(
-                visible = visible,
+                visible = uiVisible,
                 rain = s.codeRain,
                 scanlines = s.scanlines,
                 radar = s.radarAnim,
@@ -103,11 +103,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        visible = true
+        uiVisible = true
     }
 
     override fun onPause() {
-        visible = false
+        uiVisible = false
         super.onPause()
     }
 
