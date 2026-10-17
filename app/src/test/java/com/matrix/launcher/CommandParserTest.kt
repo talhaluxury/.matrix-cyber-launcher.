@@ -82,4 +82,22 @@ class CommandParserTest {
         assertEquals(listOf("SEARCH", "SETTINGS"), CommandParser.autocomplete("se"))
         assertTrue(CommandParser.autocomplete("open x").isEmpty())
     }
+
+    @Test fun storageAndNetworkUseEnv() {
+        assertEquals("STORAGE: UNAVAILABLE", CommandParser.execute("storage", env).lines.first())
+        assertTrue(CommandParser.execute("network", env).lines.any { it.contains("NO TRAFFIC") })
+    }
+
+    @Test fun scanIsLabelledSimulated() {
+        val r = CommandParser.execute("scan", env)
+        assertEquals(TerminalAction.Scan, r.action)
+        assertTrue(r.lines.joinToString().contains("SIMULATED"))
+    }
+
+    @Test fun themeSwitchesByPartialName() {
+        assertEquals(TerminalAction.SetTheme("RED_ALERT"), CommandParser.execute("theme red", env).action)
+        assertEquals(TerminalAction.SetTheme("CYAN_CYBER"), CommandParser.execute("theme cyan cyber", env).action)
+        assertEquals(TerminalAction.None, CommandParser.execute("theme purple", env).action)
+        assertTrue(CommandParser.execute("theme", env).lines.size > CommandParser.THEMES.size)
+    }
 }

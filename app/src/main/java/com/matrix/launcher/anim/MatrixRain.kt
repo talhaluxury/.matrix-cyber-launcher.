@@ -10,6 +10,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
+import com.matrix.launcher.ui.theme.MatrixColors
 import java.util.Random
 import android.graphics.Color as AColor
 import android.graphics.Paint as NativePaint
@@ -44,6 +45,10 @@ fun MatrixRain(modifier: Modifier = Modifier, fx: Fx) {
         val rows = (size.height / cell).toInt() + 1
         val cycle = (rows + 20).toFloat()
         val dim = (if (fx.highContrast) 0.4f else 1f) * fx.brightness
+        val neon = MatrixColors.Neon
+        val nr = (neon.red * 255).toInt()
+        val ng = (neon.green * 255).toInt()
+        val nb = (neon.blue * 255).toInt()
         drawIntoCanvas { canvas ->
             val nc = canvas.nativeCanvas
             for (i in 0 until columns.count) {
@@ -58,7 +63,7 @@ fun MatrixRain(modifier: Modifier = Modifier, fx: Fx) {
                     paint.color = if (k == 0) {
                         AColor.argb((a + 90).coerceAtMost(255), 200, 255, 200)
                     } else {
-                        AColor.argb(a, 57, 255, 20)
+                        AColor.argb(a, nr, ng, nb)
                     }
                     val gi = if (k == 0) (row * 7 + i + (t * 8f).toInt()) and 63 else (row * 7 + i) and 63
                     nc.drawText(columns.glyphs, i * GLYPH_ROWS + gi, 1, x, (row + 1) * cell, paint)

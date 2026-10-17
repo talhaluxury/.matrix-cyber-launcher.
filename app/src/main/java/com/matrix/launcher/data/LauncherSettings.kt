@@ -21,4 +21,13 @@ data class LauncherSettings(
     val voiceEnabled: Boolean = true,
     val matrixIcons: Boolean = true,
     val deviceLabel: String = "",
+    val theme: String = "MATRIX_GREEN",
+    val rainSpeed: Int = 100,
+    val batteryFriendly: Boolean = false,
+    val parallax: Boolean = false,
+    val hudVisible: Boolean = true,
+    val defaultPanel: Int = 0,
+    val aiEnabled: Boolean = false,
+    val aiBaseUrl: String = "",
+    val aiModel: String = "",
 )

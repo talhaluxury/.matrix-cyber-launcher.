@@ -13,6 +13,7 @@ data class Fx(
     val brightness: Float = 1f,
     val highContrast: Boolean = false,
     val matrixIcons: Boolean = true,
+    val rainSpeed: Float = 1f,
 ) {
     val animate: Boolean get() = visible && !reduceMotion
     val fps: Int
@@ -32,5 +33,5 @@ data class Fx(
             Intensity.LOW -> 0.6f
             Intensity.MEDIUM -> 1f
             Intensity.EXTREME -> 1.6f
-        }
+        } * rainSpeed
 }

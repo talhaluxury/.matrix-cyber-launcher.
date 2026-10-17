@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.matrix.launcher.core.AppMatcher
 import com.matrix.launcher.core.AppRef
 import com.matrix.launcher.core.CommandParser
+import com.matrix.launcher.core.LocalAssistant
+import com.matrix.launcher.core.PinHasher
 import com.matrix.launcher.core.MatchResult
 import com.matrix.launcher.core.TerminalAction
 import com.matrix.launcher.core.TerminalEnv
@@ -17,6 +19,9 @@ import com.matrix.launcher.data.AppShortcut
 import com.matrix.launcher.data.DeviceStatus
 import com.matrix.launcher.data.DockEntry
 import com.matrix.launcher.data.LauncherSettings
+import com.matrix.launcher.data.PinState
+import com.matrix.launcher.system.RemoteAi
+import android.os.SystemClock
 import com.matrix.launcher.data.SettingsRepository
 import com.matrix.launcher.system.SystemStatusReader
 import kotlinx.coroutines.Dispatchers
@@ -36,8 +41,10 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS, WIDGETS }
+enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS, WIDGETS, SHOW, PRIVATE, ASSISTANT }
 enum class VoiceState { IDLE, LISTENING }
+
+private const val PANELS = 3
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val appRepo = AppRepository(application)
@@ -100,10 +107,122 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _menuApp = MutableStateFlow<AppInfo?>(null)
     val menuApp: StateFlow<AppInfo?> = _menuApp.asStateFlow()
 
+    // ---------- home panels (0 = reactor, 1 = globe, 2 = radar) ----------
+    private val _panel = MutableStateFlow(0)
+    val panel: StateFlow<Int> = _panel.asStateFlow()
+    fun setPanel(i: Int) { _panel.value = ((i % PANELS) + PANELS) % PANELS }
+    fun swipePanel(delta: Int) = setPanel(_panel.value + delta)
+
+    // ---------- vault (launcher-only PIN) ----------
+    val pinState: StateFlow<PinState> =
+        settingsRepo.pinState.stateIn(viewModelScope, SharingStarted.Eagerly, PinState.Loading)
+    val privateApps: StateFlow<List<String>> =
+        settingsRepo.privateApps.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _privateUnlocked = MutableStateFlow(false)
+    val privateUnlocked: StateFlow<Boolean> = _privateUnlocked.asStateFlow()
+    private var pinAttempts = 0
+    private var pinLockedUntil = 0L
+
+    /** Returns null on success, otherwise a message to show. */
+    fun unlockPrivate(pin: String): String? {
+        val st = pinState.value as? PinState.Set ?: return "NO PIN SET"
+        val now = SystemClock.elapsedRealtime()
+        if (now < pinLockedUntil) return "TOO MANY ATTEMPTS - WAIT ${(pinLockedUntil - now + 999) / 1000}S"
+        return if (PinHasher.verify(pin, st.salt, st.hash)) {
+            pinAttempts = 0
+            _privateUnlocked.value = true
+            null
+        } else {
+            pinAttempts++
+            if (pinAttempts >= 5) {
+                pinAttempts = 0
+                pinLockedUntil = now + 30_000
+                "TOO MANY ATTEMPTS - LOCKED 30S"
+            } else "WRONG PIN"
+        }
+    }
+
+    fun lockPrivate() { _privateUnlocked.value = false }
+
+    /** Allowed only when no PIN exists yet, or while the vault is unlocked (change PIN). */
+    fun setPin(pin: String): Boolean {
+        if (!PinHasher.isValidPin(pin)) return false
+        if (pinState.value is PinState.Loading) return false
+        if (pinState.value is PinState.Set && !_privateUnlocked.value) return false
+        viewModelScope.launch {
+            val salt = PinHasher.newSalt()
+            settingsRepo.setPin(salt, PinHasher.hash(pin, salt))
+            _privateUnlocked.value = true
+            _message.value = "VAULT PIN SAVED"
+        }
+        return true
+    }
+
+    fun removePin() {
+        if (!_privateUnlocked.value) return
+        viewModelScope.launch {
+            settingsRepo.clearPin()
+            _privateUnlocked.value = false
+            _message.value = "VAULT PIN REMOVED"
+        }
+    }
+
+    fun togglePrivateApp(key: String) {
+        if (!_privateUnlocked.value) return
+        viewModelScope.launch {
+            val cur = privateApps.value
+            settingsRepo.setPrivateApps(if (key in cur) cur - key else cur + key)
+        }
+    }
+
+    // ---------- assistant ----------
+    val aiKey: StateFlow<String> = settingsRepo.aiKey.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    fun saveAiKey(k: String) { viewModelScope.launch { settingsRepo.setAiKey(k) } }
+
+    private val _chat = MutableStateFlow(listOf("NEURAL INTERFACE // LOCAL ASSISTANT", "TYPE A REQUEST OR HELP"))
+    val chat: StateFlow<List<String>> = _chat.asStateFlow()
+    private val _aiBusy = MutableStateFlow(false)
+    val aiBusy: StateFlow<Boolean> = _aiBusy.asStateFlow()
+
+    private fun aiConfigured(): Boolean {
+        val s = settings.value
+        return s.aiEnabled && s.aiBaseUrl.isNotBlank() && s.aiModel.isNotBlank() && aiKey.value.isNotBlank()
+    }
+
+    fun askAssistant(raw: String) {
+        val input = raw.filter { !it.isISOControl() }.trim().take(300)
+        if (input.isEmpty() || _aiBusy.value) return
+        _chat.value = (_chat.value + "> $input").takeLast(200)
+        val res = LocalAssistant.reply(input, buildEnv())
+        if (res.handled) {
+            if (res.action == TerminalAction.Clear) _chat.value = emptyList()
+            else _chat.value = (_chat.value + res.lines).takeLast(200)
+            performAction(res.action)
+            return
+        }
+        if (!aiConfigured()) {
+            _chat.value = (_chat.value + LocalAssistant.unhandledMessage(false)).takeLast(200)
+            return
+        }
+        val s = settings.value
+        _aiBusy.value = true
+        _chat.value = (_chat.value + "REMOTE AI: SENDING YOUR QUESTION TO ${s.aiBaseUrl.trim().take(60)} ...").takeLast(200)
+        viewModelScope.launch {
+            val r = withContext(Dispatchers.IO) { RemoteAi.ask(s.aiBaseUrl, aiKey.value, s.aiModel, input) }
+            val lines = r.fold(
+                onSuccess = { it.lines().filter { l -> l.isNotBlank() }.take(20).map { l -> "AI: $l" } },
+                onFailure = { listOf("AI REQUEST FAILED: ${(it.message ?: it.javaClass.simpleName).take(80)}") },
+            )
+            _chat.value = (_chat.value + lines).takeLast(200)
+            _aiBusy.value = false
+        }
+    }
+
     init {
         viewModelScope.launch {
             val s = runCatching { settingsRepo.settings.first() }.getOrDefault(LauncherSettings())
             _boot.value = s.bootSequence
+            _panel.value = s.defaultPanel.coerceIn(0, PANELS - 1)
         }
         refreshApps()
         refreshStatus()
@@ -172,6 +291,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun back() {
+        if (_overlay.value == Overlay.PRIVATE) _privateUnlocked.value = false
         if (_overlay.value != Overlay.NONE) {
             if (_overlay.value == Overlay.DRAWER) _query.value = ""
             _overlay.value = Overlay.NONE
@@ -179,6 +299,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun goHome() {
+        _privateUnlocked.value = false
         _query.value = ""
         _overlay.value = Overlay.NONE
         _menuApp.value = null
@@ -256,6 +377,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setVoiceState(s: VoiceState) { _voice.value = s }
 
     fun handleVoice(text: String) {
+        if (_overlay.value == Overlay.ASSISTANT) {
+            askAssistant(text)
+            return
+        }
         when (val intent = VoiceCommandInterpreter.interpret(text)) {
             is VoiceIntent.OpenApp -> openByName(intent.name)
             is VoiceIntent.Search -> {
@@ -297,6 +422,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 DateTimeFormatter.ofPattern("EEEE, dd MMM yyyy", Locale.getDefault())
             )
             override fun battery(): String = "BATTERY: " + (s?.batteryText() ?: "UNAVAILABLE")
+            override fun storage(): String = "STORAGE: " + (s?.storageText() ?: "UNAVAILABLE")
+            override fun network(): String = "NETWORK: " + (s?.networkText() ?: "UNKNOWN")
+            override fun currentTheme(): String = st.theme
             override fun status(): List<String> = listOf(
                 "LAUNCHER: MATRIX CYBER LAUNCHER v$version",
                 "DEFAULT HOME: " + if (isHome) "YES" else "NO",
@@ -320,11 +448,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _terminal.value = (_terminal.value + echo + res.lines).takeLast(400)
         }
-        val action = res.action
+        performAction(res.action)
+    }
+
+    private fun performAction(action: TerminalAction) {
         when (action) {
             is TerminalAction.Launch -> launchKey(action.key)
             TerminalAction.OpenSettings -> _overlay.value = Overlay.SETTINGS
             TerminalAction.OpenRadar -> _overlay.value = Overlay.RADAR
+            TerminalAction.Scan -> startScan()
+            TerminalAction.OpenShow -> _overlay.value = Overlay.SHOW
+            TerminalAction.OpenGlobe -> { _panel.value = 1; _overlay.value = Overlay.NONE }
+            is TerminalAction.SetTheme -> updateSettings { it.copy(theme = action.id) }
             else -> Unit
         }
     }

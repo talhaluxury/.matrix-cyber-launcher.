@@ -28,8 +28,20 @@ class AppRepository(context: Context) {
             val ai = ri.activityInfo ?: return@mapNotNull null
             if (ai.packageName == ctx.packageName) return@mapNotNull null
             val label = try { ri.loadLabel(pm).toString() } catch (e: Exception) { ai.packageName }
-            AppInfo(label = label, packageName = ai.packageName, activityName = ai.name)
+            AppInfo(label = label, packageName = ai.packageName, activityName = ai.name, category = categoryOf(ai))
         }.distinctBy { it.key }.sortedBy { it.label.lowercase() }
+    }
+
+    /** Groups Android's own app-category metadata into a few launcher categories. */
+    private fun categoryOf(ai: android.content.pm.ActivityInfo): String {
+        val c = try { ai.applicationInfo?.category ?: -1 } catch (e: Exception) { -1 }
+        return when (c) {
+            0 -> "GAMES"
+            1, 2, 3 -> "MEDIA"
+            4, 5 -> "SOCIAL"
+            6, 7, 8 -> "TOOLS"
+            else -> "OTHER"
+        }
     }
 
     fun cachedIcon(app: AppInfo): ImageBitmap? = iconCache.get(app.key)

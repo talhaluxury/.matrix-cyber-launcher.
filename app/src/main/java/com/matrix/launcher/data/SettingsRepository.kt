@@ -40,6 +40,19 @@ class SettingsRepository(context: Context) {
         val LIST = booleanPreferencesKey("list")
         val VOICE = booleanPreferencesKey("voice")
         val LABEL = stringPreferencesKey("label")
+        val THEME = stringPreferencesKey("theme")
+        val RAIN_SPEED = intPreferencesKey("rainspeed")
+        val BATTERY_FRIENDLY = booleanPreferencesKey("batfriendly")
+        val PARALLAX = booleanPreferencesKey("parallax")
+        val HUD = booleanPreferencesKey("hud")
+        val DEFAULT_PANEL = intPreferencesKey("defpanel")
+        val AI_ON = booleanPreferencesKey("aion")
+        val AI_URL = stringPreferencesKey("aiurl")
+        val AI_MODEL = stringPreferencesKey("aimodel")
+        val AI_KEY = stringPreferencesKey("aikey")
+        val PIN_HASH = stringPreferencesKey("pinhash")
+        val PIN_SALT = stringPreferencesKey("pinsalt")
+        val PRIVATE_APPS = stringPreferencesKey("privapps")
         val MATRIX_ICONS = booleanPreferencesKey("mticons")
         val FAVORITES = stringPreferencesKey("favorites")
         val RECENTS = stringPreferencesKey("recents")
@@ -60,6 +73,37 @@ class SettingsRepository(context: Context) {
     suspend fun setWidgets(list: List<Int>) {
         try {
             store.edit { p -> p[Keys.WIDGETS] = list.joinToString("\n") }
+        } catch (e: IOException) {
+            Log.w("Settings", "DataStore write failed", e)
+        }
+    }
+
+    val pinState: Flow<PinState> = safeData.map { p ->
+        val h = p[Keys.PIN_HASH]
+        val s = p[Keys.PIN_SALT]
+        if (h != null && s != null) PinState.Set(salt = s, hash = h) else PinState.None
+    }.distinctUntilChanged()
+
+    val privateApps: Flow<List<String>> = safeData.map { split(it[Keys.PRIVATE_APPS]) }.distinctUntilChanged()
+    val aiKey: Flow<String> = safeData.map { it[Keys.AI_KEY] ?: "" }.distinctUntilChanged()
+
+    suspend fun setPin(salt: String, hash: String) = safeEdit { p ->
+        p[Keys.PIN_SALT] = salt
+        p[Keys.PIN_HASH] = hash
+    }
+
+    suspend fun clearPin() = safeEdit { p ->
+        p.remove(Keys.PIN_SALT)
+        p.remove(Keys.PIN_HASH)
+        p.remove(Keys.PRIVATE_APPS)
+    }
+
+    suspend fun setPrivateApps(list: List<String>) = safeEdit { p -> p[Keys.PRIVATE_APPS] = list.joinToString("\n") }
+    suspend fun setAiKey(key: String) = safeEdit { p -> p[Keys.AI_KEY] = key.trim().take(300) }
+
+    private suspend fun safeEdit(block: (MutablePreferences) -> Unit) {
+        try {
+            store.edit { p -> block(p) }
         } catch (e: IOException) {
             Log.w("Settings", "DataStore write failed", e)
         }
@@ -89,6 +133,15 @@ class SettingsRepository(context: Context) {
             voiceEnabled = p[Keys.VOICE] ?: d.voiceEnabled,
             matrixIcons = p[Keys.MATRIX_ICONS] ?: d.matrixIcons,
             deviceLabel = p[Keys.LABEL] ?: d.deviceLabel,
+            theme = p[Keys.THEME] ?: d.theme,
+            rainSpeed = (p[Keys.RAIN_SPEED] ?: d.rainSpeed).coerceIn(50, 200),
+            batteryFriendly = p[Keys.BATTERY_FRIENDLY] ?: d.batteryFriendly,
+            parallax = p[Keys.PARALLAX] ?: d.parallax,
+            hudVisible = p[Keys.HUD] ?: d.hudVisible,
+            defaultPanel = (p[Keys.DEFAULT_PANEL] ?: d.defaultPanel).coerceIn(0, 2),
+            aiEnabled = p[Keys.AI_ON] ?: d.aiEnabled,
+            aiBaseUrl = p[Keys.AI_URL] ?: d.aiBaseUrl,
+            aiModel = p[Keys.AI_MODEL] ?: d.aiModel,
         )
     }
 
@@ -111,6 +164,15 @@ class SettingsRepository(context: Context) {
         p[Keys.VOICE] = s.voiceEnabled
         p[Keys.MATRIX_ICONS] = s.matrixIcons
         p[Keys.LABEL] = s.deviceLabel.take(32)
+        p[Keys.THEME] = s.theme
+        p[Keys.RAIN_SPEED] = s.rainSpeed
+        p[Keys.BATTERY_FRIENDLY] = s.batteryFriendly
+        p[Keys.PARALLAX] = s.parallax
+        p[Keys.HUD] = s.hudVisible
+        p[Keys.DEFAULT_PANEL] = s.defaultPanel
+        p[Keys.AI_ON] = s.aiEnabled
+        p[Keys.AI_URL] = s.aiBaseUrl.take(200)
+        p[Keys.AI_MODEL] = s.aiModel.take(80)
     }
 
     suspend fun update(block: (LauncherSettings) -> LauncherSettings) {

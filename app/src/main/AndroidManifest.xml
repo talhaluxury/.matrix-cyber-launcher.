@@ -2,10 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Used ONLY by the optional remote AI assistant, which is off by default and sends nothing until the user
+         enables it and enters their own endpoint and key. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Declared, but only REQUESTED when the user taps the mic button (after an explanation). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
 
     <!-- Package visibility: launchable apps + the few intents used to find default apps. No QUERY_ALL_PACKAGES. -->
     <queries>

@@ -76,13 +76,17 @@ fun LauncherRoot(
             delay(5000)
         }
     }
+    LaunchedEffect(fx.visible) { if (!fx.visible) vm.lockPrivate() }
     LaunchedEffect(message) {
         if (message != null) {
             delay(3500)
             vm.clearMessage()
         }
     }
-    LaunchedEffect(overlay) { if (overlay == Overlay.DRAWER) feedback.play(SoundFx.Type.DRAWER) }
+    LaunchedEffect(overlay) {
+        if (overlay == Overlay.DRAWER) feedback.play(SoundFx.Type.DRAWER)
+        if (overlay != Overlay.PRIVATE) vm.lockPrivate()
+    }
     LaunchedEffect(boot) { if (boot) feedback.play(SoundFx.Type.BOOT) }
     BackHandler(enabled = overlay != Overlay.NONE) { vm.back() }
 
@@ -101,6 +105,9 @@ fun LauncherRoot(
             AnimatedVisibility(overlay == Overlay.DIAGNOSTICS, enter = enter, exit = exit) { DiagnosticsScreen(vm) }
             AnimatedVisibility(overlay == Overlay.SETTINGS, enter = enter, exit = exit) { SettingsScreen(vm) }
             AnimatedVisibility(overlay == Overlay.WIDGETS, enter = enter, exit = exit) { WidgetsScreen(vm, widgets, onAddWidget, onRemoveWidget) }
+            AnimatedVisibility(overlay == Overlay.ASSISTANT, enter = enter, exit = exit) { AssistantScreen(vm, onVoiceClick) }
+            AnimatedVisibility(overlay == Overlay.PRIVATE, enter = enter, exit = exit) { PrivatePanel(vm) }
+            AnimatedVisibility(overlay == Overlay.SHOW, enter = enter, exit = exit) { ShowModeScreen(vm) }
 
             val banner = when {
                 voice == VoiceState.LISTENING -> "LISTENING... SPEAK NOW"

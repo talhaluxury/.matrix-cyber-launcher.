@@ -3,7 +3,18 @@ package com.matrix.launcher.ui
 import android.os.Build
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import com.matrix.launcher.anim.CyberGlobeView
+import com.matrix.launcher.anim.RadarView
+import com.matrix.launcher.anim.rememberTilt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -65,11 +76,21 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
     val appError by vm.appError.collectAsState()
     val voice by vm.voiceState.collectAsState()
     val favApps = remember(apps, favorites) { favorites.mapNotNull { k -> apps.firstOrNull { it.key == k } } }
+    val panel by vm.panel.collectAsState()
+    var ripple by remember { mutableIntStateOf(0) }
+    val tilt = rememberTilt(settings.parallax && fx.visible && !fx.reduceMotion)
 
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .systemBarsPadding()
+            .pointerInput(fb) {
+                // long-press on empty space opens customization (children that handle touches win)
+                detectTapGestures(onLongPress = {
+                    fb.tap()
+                    vm.openOverlay(Overlay.SETTINGS)
+                })
+            }
             .pointerInput(Unit) {
                 var total = 0f
                 detectVerticalDragGestures(
@@ -79,6 +100,18 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
                     },
                     onDragCancel = { total = 0f },
                     onVerticalDrag = { _, dy -> total += dy },
+                )
+            }
+            .pointerInput(Unit) {
+                // swipe left/right switches the center panel (reactor / globe / radar)
+                var total = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { total = 0f },
+                    onDragEnd = {
+                        if (total < -120f) vm.swipePanel(1) else if (total > 120f) vm.swipePanel(-1)
+                    },
+                    onDragCancel = { total = 0f },
+                    onHorizontalDrag = { _, dx -> total += dx },
                 )
             }
     ) {
@@ -99,16 +132,31 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
             }
 
             val core: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { s ->
-                CoreReactor(
-                    Modifier.size(s).feedbackClick({
+                Box(
+                    Modifier.size(s).graphicsLayer {
+                        translationX = tilt.value.x * 14.dp.toPx()
+                        translationY = tilt.value.y * 10.dp.toPx()
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val tapScan = {
                         fb.play(SoundFx.Type.SCAN)
+                        ripple++
                         vm.startScan()
-                    }),
-                    fx = fx,
-                    scanning = scanning,
-                    label = if (scanning) "SCANNING" else "CORE",
-                    sub = if (scanning) "LOCAL TELEMETRY" else "TAP TO SCAN",
-                )
+                    }
+                    when (panel) {
+                        1 -> CyberGlobeView(Modifier.fillMaxSize(), fx)
+                        2 -> RadarView(Modifier.fillMaxSize().feedbackClick(tapScan), fx = fx, fast = scanning)
+                        else -> CoreReactor(
+                            Modifier.fillMaxSize().feedbackClick(tapScan),
+                            fx = fx,
+                            scanning = scanning,
+                            label = if (scanning) "SCANNING" else "CORE",
+                            sub = if (scanning) "LOCAL TELEMETRY" else "TAP TO SCAN",
+                        )
+                    }
+                    if (panel != 1 && !fx.reduceMotion) PulseRipple(ripple, Modifier.fillMaxSize())
+                }
             }
             if (landscape) {
                 Box(Modifier.fillMaxWidth().height(240.dp), contentAlignment = Alignment.Center) { core(230.dp) }
@@ -119,16 +167,29 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
                 }
             }
 
-            Panel(Modifier.fillMaxWidth(), title = "LAUNCHER PANEL // LOCAL TELEMETRY") {
-                Row(Modifier.fillMaxWidth()) {
-                    Stat("BAT", status?.batteryText() ?: "--", Modifier.weight(1f))
-                    Spacer(Modifier.width(12.dp))
-                    Stat("NET", status?.networkShort() ?: "--", Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                listOf("CORE", "GLOBE", "RADAR").forEachIndexed { i, n ->
+                    Text(
+                        n,
+                        color = if (panel == i) MatrixColors.Neon else MatrixColors.Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.feedbackClick({ vm.setPanel(i) }).padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                 }
-                Row(Modifier.fillMaxWidth()) {
-                    Stat("RAM FREE", status?.memShort() ?: "--", Modifier.weight(1f))
-                    Spacer(Modifier.width(12.dp))
-                    Stat("UPTIME", status?.uptimeText() ?: "--", Modifier.weight(1f))
+            }
+
+            if (settings.hudVisible) {
+                Panel(Modifier.fillMaxWidth(), title = "LAUNCHER PANEL // LOCAL TELEMETRY") {
+                    Row(Modifier.fillMaxWidth()) {
+                        Stat("BAT", status?.batteryText() ?: "--", Modifier.weight(1f))
+                        Spacer(Modifier.width(12.dp))
+                        Stat("NET", status?.networkShort() ?: "--", Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth()) {
+                        Stat("RAM FREE", status?.memShort() ?: "--", Modifier.weight(1f))
+                        Spacer(Modifier.width(12.dp))
+                        Stat("UPTIME", status?.uptimeText() ?: "--", Modifier.weight(1f))
+                    }
                 }
             }
 
@@ -169,6 +230,12 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
                 }
             }
 
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MatrixButton("AI", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.ASSISTANT) })
+                MatrixButton("SHOW", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.SHOW) })
+                MatrixButton("VAULT", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.PRIVATE) })
+            }
+
             Panel(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     dock.forEach { e ->
@@ -187,6 +254,26 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PulseRipple(trigger: Int, modifier: Modifier) {
+    val p = remember { Animatable(1f) }
+    LaunchedEffect(trigger) {
+        if (trigger > 0) {
+            p.snapTo(0f)
+            p.animateTo(1f, tween(900))
+        }
+    }
+    Canvas(modifier) {
+        val v = p.value
+        if (v < 1f) {
+            val r = size.minDimension / 2f
+            drawCircle(MatrixColors.Neon.copy(alpha = (1f - v) * 0.6f), r * (0.25f + 0.75f * v), center, style = Stroke(3.dp.toPx()))
+            val v2 = (v - 0.2f).coerceAtLeast(0f)
+            drawCircle(MatrixColors.Neon2.copy(alpha = (1f - v2) * 0.4f), r * (0.2f + 0.8f * v2), center, style = Stroke(2.dp.toPx()))
         }
     }
 }

@@ -30,6 +30,15 @@ Implemented (written, not yet run on a device by the author):
 - Settings (DataStore): intensity, rain, scanlines, radar, sound, haptics, 12/24h, grid, icon size, terminal size, brightness, high contrast, reduce motion, boot sequence, device label, restore defaults.
 - Animations pause when the launcher is not visible; reduce-motion (app setting or system animation scale 0) shows static frames.
 
+Added in v1.4 (stages 2-9, written WITHOUT a compiler: expect to fix a few build errors on the first CI run):
+- Home panels: swipe left/right (or tap CORE / GLOBE / RADAR) between reactor, interactive cyber globe (drag to rotate, pinch to zoom; ALL data simulated and labelled) and radar. Reactor tap = pulse + ripple + real telemetry refresh. Long-press empty space = Settings.
+- SHOW MODE (button SHOW or terminal `SHOW`): ~25 s visual demo (boot lines, rain, grid sweep, reactor, radar, globe, HUD, SYSTEM ONLINE). Animation only; EXIT button + Back leave instantly.
+- VAULT: launcher-only PIN-protected private shortcut list (salted, iterated SHA-256; 5 wrong tries = 30 s lock; auto-locks when you leave). NOT a replacement for Android's lock screen.
+- AI assistant (button AI): offline rule-based assistant (open/find apps, battery, storage, network, time, date, status, theme, explain commands). Optional remote AI: OFF by default, you supply your own HTTPS OpenAI-compatible endpoint, model and key in Settings; only the typed question is sent. INTERNET permission exists only for this.
+- Terminal: added GLOBE and SHOW. Drawer: category filter (from Android app-category metadata). Settings: rain speed, battery-friendly mode, HUD panel toggle, tilt parallax (accelerometer), default home panel.
+
+Added in v1.3 (stage 1, NOT compiled or run by the author): 5 themes (MATRIX GREEN, STEALTH BLACK, CYAN CYBER, RED ALERT, MINIMAL HUD) persisted in DataStore with a Settings picker; terminal commands STORAGE, NETWORK, SCAN (labelled visual + real telemetry refresh), THEME [name].
+
 Added in v1.2: iPhone-style liquid-glass look (glass panels, pill buttons with bouncy press, glossy squircle icon tiles) and Matrix green icon tint (Settings > MATRIX GREEN ICON TINT turns it off).
 
 Added in v1.1: real Android widgets (WDG button, AppWidgetHost; Android asks you to approve each bind), app shortcuts in the long-press menu (shown only while this is the default launcher), reorderable favorites (< > in Settings), button roles for screen readers.

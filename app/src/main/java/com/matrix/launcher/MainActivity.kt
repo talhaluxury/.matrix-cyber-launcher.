@@ -27,7 +27,9 @@ import com.matrix.launcher.system.VoiceController
 import com.matrix.launcher.system.WidgetController
 import com.matrix.launcher.ui.LauncherRoot
 import com.matrix.launcher.ui.LocalFx
+import com.matrix.launcher.data.Intensity
 import com.matrix.launcher.ui.theme.MatrixTheme
+import com.matrix.launcher.ui.theme.ThemeId
 
 class MainActivity : ComponentActivity() {
 
@@ -71,15 +73,16 @@ class MainActivity : ComponentActivity() {
                 visible = uiVisible,
                 rain = s.codeRain,
                 scanlines = s.scanlines,
-                radar = s.radarAnim,
-                intensity = s.intensity,
+                radar = s.radarAnim && !s.batteryFriendly,
+                intensity = if (s.batteryFriendly) Intensity.LOW else s.intensity,
                 reduceMotion = s.reduceMotion || systemReduce,
                 brightness = s.brightness,
                 highContrast = s.highContrast,
                 matrixIcons = s.matrixIcons,
+                rainSpeed = s.rainSpeed / 100f,
             )
             CompositionLocalProvider(LocalFx provides fx) {
-                MatrixTheme {
+                MatrixTheme(ThemeId.fromId(s.theme)) {
                     LauncherRoot(
                         vm,
                         widgets = widgets,

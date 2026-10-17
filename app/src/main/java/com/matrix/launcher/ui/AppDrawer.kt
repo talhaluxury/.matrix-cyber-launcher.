@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -63,8 +65,11 @@ fun AppDrawer(vm: MainViewModel, focusSearch: Boolean, onVoice: () -> Unit) {
     val error by vm.appError.collectAsState()
     val focus = remember { FocusRequester() }
     val q = query.trim()
-    val filtered = remember(apps, q) {
-        if (q.isEmpty()) apps else apps.filter { it.label.contains(q, ignoreCase = true) }
+    var cat by remember { mutableStateOf("ALL") }
+    val cats = remember(apps) { listOf("ALL") + apps.map { it.category }.distinct().sorted() }
+    val activeCat = if (cat in cats) cat else "ALL"
+    val filtered = remember(apps, q, activeCat) {
+        apps.filter { (q.isEmpty() || it.label.contains(q, ignoreCase = true)) && (activeCat == "ALL" || it.category == activeCat) }
     }
     val favApps = remember(apps, favorites) { favorites.mapNotNull { k -> apps.firstOrNull { it.key == k } } }
     val recentApps = remember(apps, recents) { recents.mapNotNull { k -> apps.firstOrNull { it.key == k } } }
@@ -116,6 +121,14 @@ fun AppDrawer(vm: MainViewModel, focusSearch: Boolean, onVoice: () -> Unit) {
             if (settings.voiceEnabled) MatrixButton("MIC", accent = MatrixColors.Neon2, onClick = onVoice)
         }
         Spacer(Modifier.height(8.dp))
+        if (cats.size > 2) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                items(cats, key = { it }) { c ->
+                    MatrixButton(c, accent = if (c == activeCat) MatrixColors.Neon else MatrixColors.Muted, onClick = { cat = c })
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
 
         if (filtered.isEmpty()) {
             Panel(Modifier.fillMaxWidth()) {
@@ -135,10 +148,10 @@ fun AppDrawer(vm: MainViewModel, focusSearch: Boolean, onVoice: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (q.isEmpty() && favApps.isNotEmpty()) {
+                if (q.isEmpty() && activeCat == "ALL" && favApps.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { StripSection("FAVORITES", favApps, vm, settings.iconSize) }
                 }
-                if (q.isEmpty() && recentApps.isNotEmpty()) {
+                if (q.isEmpty() && activeCat == "ALL" && recentApps.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { StripSection("RECENT", recentApps, vm, settings.iconSize) }
                 }
                 if (q.isEmpty()) {

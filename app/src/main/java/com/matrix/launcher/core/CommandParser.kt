@@ -5,6 +5,10 @@ sealed class TerminalAction {
     object Clear : TerminalAction()
     object OpenSettings : TerminalAction()
     object OpenRadar : TerminalAction()
+    object Scan : TerminalAction()
+    object OpenShow : TerminalAction()
+    object OpenGlobe : TerminalAction()
+    data class SetTheme(val id: String) : TerminalAction()
     data class Launch(val key: String) : TerminalAction()
 }
 
@@ -16,6 +20,9 @@ interface TerminalEnv {
     fun date(): String
     fun battery(): String
     fun status(): List<String>
+    fun storage(): String = "STORAGE: UNAVAILABLE"
+    fun network(): String = "NETWORK: UNAVAILABLE"
+    fun currentTheme(): String = "MATRIX_GREEN"
 }
 
 /**
@@ -25,7 +32,17 @@ interface TerminalEnv {
 object CommandParser {
     const val MAX_INPUT = 200
 
-    val COMMANDS = listOf("HELP", "APPS", "SEARCH", "OPEN", "TIME", "DATE", "BATTERY", "STATUS", "RADAR", "SETTINGS", "CLEAR")
+    val COMMANDS = listOf("HELP", "APPS", "SEARCH", "OPEN", "TIME", "DATE", "BATTERY", "STORAGE", "NETWORK", "STATUS", "RADAR", "SCAN", "THEME", "GLOBE", "SHOW", "SETTINGS", "CLEAR")
+
+    /** Persisted ids of the built-in themes (must match ui.theme.ThemeId names). */
+    val THEMES = listOf("MATRIX_GREEN", "STEALTH_BLACK", "CYAN_CYBER", "RED_ALERT", "MINIMAL_HUD")
+
+    private fun matchTheme(arg: String): String? {
+        val n = arg.trim().uppercase().replace('_', ' ').replace(Regex("\\s+"), " ")
+        if (n.isEmpty()) return null
+        val hits = THEMES.filter { it.replace('_', ' ').startsWith(n) || it.replace('_', ' ').split(' ').first() == n }
+        return hits.singleOrNull()
+    }
 
     fun autocomplete(partial: String): List<String> {
         val p = partial.trim().uppercase()
@@ -71,6 +88,26 @@ object CommandParser {
             "TIME" -> TerminalResult(listOf("TIME: ${env.time()}"))
             "DATE" -> TerminalResult(listOf("DATE: ${env.date()}"))
             "BATTERY" -> TerminalResult(listOf(env.battery()))
+            "STORAGE" -> TerminalResult(listOf(env.storage()))
+            "NETWORK" -> TerminalResult(listOf(env.network(), "NOTE: CONNECTION TYPE ONLY. NO TRAFFIC IS INSPECTED."))
+            "SCAN" -> TerminalResult(
+                listOf("SCAN: VISUAL ANIMATION (SIMULATED) + REAL LOCAL TELEMETRY REFRESH", "NO NETWORK OR DEVICE IS PROBED."),
+                TerminalAction.Scan,
+            )
+            "THEME" -> {
+                if (arg.isEmpty()) {
+                    TerminalResult(
+                        listOf("CURRENT THEME: ${env.currentTheme().replace('_', ' ')}", "USAGE: THEME <NAME>  OPTIONS:") +
+                            THEMES.map { "  ${it.replace('_', ' ')}" }
+                    )
+                } else {
+                    val id = matchTheme(arg)
+                    if (id == null) TerminalResult(listOf("UNKNOWN OR AMBIGUOUS THEME \"$arg\" (TYPE THEME)"))
+                    else TerminalResult(listOf("THEME SET: ${id.replace('_', ' ')}"), TerminalAction.SetTheme(id))
+                }
+            }
+            "GLOBE" -> TerminalResult(listOf("SWITCHING TO CYBER GLOBE (SIMULATED DATA)"), TerminalAction.OpenGlobe)
+            "SHOW" -> TerminalResult(listOf("STARTING SHOW MODE - VISUAL DEMONSTRATION ONLY"), TerminalAction.OpenShow)
             "STATUS" -> TerminalResult(env.status())
             "RADAR" -> TerminalResult(listOf("OPENING RADAR (VISUAL SIMULATION - NO REAL SCAN)"), TerminalAction.OpenRadar)
             "SETTINGS" -> TerminalResult(listOf("OPENING LAUNCHER SETTINGS"), TerminalAction.OpenSettings)
@@ -87,8 +124,14 @@ object CommandParser {
         "  OPEN <APP>      LAUNCH A MATCHING APP",
         "  TIME / DATE     DEVICE TIME AND DATE",
         "  BATTERY         BATTERY LEVEL",
+        "  STORAGE         INTERNAL STORAGE FREE/TOTAL",
+        "  NETWORK         CONNECTION TYPE (NO TRAFFIC DATA)",
         "  STATUS          LOCAL LAUNCHER STATUS",
+        "  SCAN            VISUAL SCAN + REAL TELEMETRY REFRESH",
+        "  THEME [NAME]    LIST OR SWITCH THEMES",
         "  RADAR           SIMULATED RADAR (VISUAL ONLY)",
+        "  GLOBE           SIMULATED CYBER GLOBE PANEL",
+        "  SHOW            VISUAL DEMO (NO REAL OPERATIONS)",
         "  SETTINGS        LAUNCHER SETTINGS",
         "  CLEAR           CLEAR OUTPUT",
         "NOTE: THIS IS NOT A SHELL. NO SYSTEM COMMANDS RUN.",
