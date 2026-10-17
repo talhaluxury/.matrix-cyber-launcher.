@@ -1,0 +1,294 @@
+package com.matrix.launcher
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.matrix.launcher.core.AppMatcher
+import com.matrix.launcher.core.AppRef
+import com.matrix.launcher.core.CommandParser
+import com.matrix.launcher.core.MatchResult
+import com.matrix.launcher.core.TerminalAction
+import com.matrix.launcher.core.TerminalEnv
+import com.matrix.launcher.core.VoiceCommandInterpreter
+import com.matrix.launcher.core.VoiceIntent
+import com.matrix.launcher.data.AppInfo
+import com.matrix.launcher.data.AppRepository
+import com.matrix.launcher.data.DeviceStatus
+import com.matrix.launcher.data.DockEntry
+import com.matrix.launcher.data.LauncherSettings
+import com.matrix.launcher.data.SettingsRepository
+import com.matrix.launcher.system.SystemStatusReader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS }
+enum class VoiceState { IDLE, LISTENING }
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+    val appRepo = AppRepository(application)
+    private val settingsRepo = SettingsRepository(application)
+    private val statusReader = SystemStatusReader(application)
+
+    val settings: StateFlow<LauncherSettings> =
+        settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, LauncherSettings())
+    val favorites: StateFlow<List<String>> =
+        settingsRepo.favorites.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val recents: StateFlow<List<String>> =
+        settingsRepo.recents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val apps: StateFlow<List<AppInfo>> = _apps.asStateFlow()
+
+    val dock: StateFlow<List<DockEntry>> =
+        _apps.map { appRepo.dock(it) }.flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _appError = MutableStateFlow<String?>(null)
+    val appError: StateFlow<String?> = _appError.asStateFlow()
+
+    private val _status = MutableStateFlow<DeviceStatus?>(null)
+    val status: StateFlow<DeviceStatus?> = _status.asStateFlow()
+
+    private val _overlay = MutableStateFlow(Overlay.NONE)
+    val overlay: StateFlow<Overlay> = _overlay.asStateFlow()
+
+    private val _focusSearch = MutableStateFlow(false)
+    val focusSearch: StateFlow<Boolean> = _focusSearch.asStateFlow()
+
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    private val _terminal = MutableStateFlow(listOf("MATRIX TERMINAL // TYPE HELP"))
+    val terminal: StateFlow<List<String>> = _terminal.asStateFlow()
+
+    private val _history = MutableStateFlow<List<String>>(emptyList())
+    val history: StateFlow<List<String>> = _history.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val _boot = MutableStateFlow(false)
+    val boot: StateFlow<Boolean> = _boot.asStateFlow()
+
+    private val _voice = MutableStateFlow(VoiceState.IDLE)
+    val voiceState: StateFlow<VoiceState> = _voice.asStateFlow()
+
+    private val _voiceExplain = MutableStateFlow(false)
+    val voiceExplain: StateFlow<Boolean> = _voiceExplain.asStateFlow()
+
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
+    private val _menuApp = MutableStateFlow<AppInfo?>(null)
+    val menuApp: StateFlow<AppInfo?> = _menuApp.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val s = runCatching { settingsRepo.settings.first() }.getOrDefault(LauncherSettings())
+            _boot.value = s.bootSequence
+        }
+        refreshApps()
+        refreshStatus()
+    }
+
+    // ---------- app index ----------
+    fun refreshApps() {
+        viewModelScope.launch {
+            try {
+                val list = withContext(Dispatchers.Default) { appRepo.loadApps() }
+                _apps.value = list
+                _appError.value = if (list.isEmpty()) "NO LAUNCHABLE APPS FOUND" else null
+            } catch (e: Exception) {
+                _appError.value = "APP INDEX FAILED: ${e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    fun refreshStatus() {
+        viewModelScope.launch {
+            val s = withContext(Dispatchers.IO) { runCatching { statusReader.read() }.getOrNull() }
+            if (s != null) _status.value = s
+        }
+    }
+
+    fun isDefaultHome(): Boolean = appRepo.isDefaultHome()
+    fun versionName(): String = appRepo.versionName()
+
+    // ---------- launching ----------
+    fun launch(app: AppInfo) {
+        if (appRepo.launch(app)) {
+            viewModelScope.launch { settingsRepo.pushRecent(app.key) }
+            _overlay.value = Overlay.NONE
+            _query.value = ""
+        } else {
+            _message.value = "APP UNAVAILABLE: ${app.label}"
+            refreshApps()
+        }
+    }
+
+    private fun launchKey(key: String) {
+        val app = _apps.value.firstOrNull { it.key == key }
+        if (app != null) launch(app) else _message.value = "APP UNAVAILABLE"
+    }
+
+    fun openAppInfo(app: AppInfo) {
+        if (!appRepo.openAppInfo(app)) _message.value = "CAN'T OPEN APP INFO"
+    }
+
+    fun uninstall(app: AppInfo) {
+        if (!appRepo.uninstall(app)) _message.value = "CAN'T START UNINSTALL"
+    }
+
+    fun openMenuFor(app: AppInfo) { _menuApp.value = app }
+    fun closeMenu() { _menuApp.value = null }
+
+    // ---------- navigation ----------
+    fun openDrawer(focusSearch: Boolean) {
+        _focusSearch.value = focusSearch
+        _overlay.value = Overlay.DRAWER
+        refreshApps()
+    }
+
+    fun openOverlay(o: Overlay) {
+        if (o == Overlay.DRAWER) openDrawer(false) else _overlay.value = o
+    }
+
+    fun back() {
+        if (_overlay.value != Overlay.NONE) {
+            if (_overlay.value == Overlay.DRAWER) _query.value = ""
+            _overlay.value = Overlay.NONE
+        }
+    }
+
+    fun goHome() {
+        _query.value = ""
+        _overlay.value = Overlay.NONE
+        _menuApp.value = null
+    }
+
+    fun setQuery(q: String) { _query.value = q.take(60) }
+    fun dismissBoot() { _boot.value = false }
+    fun postMessage(m: String) { _message.value = m }
+    fun clearMessage() { _message.value = null }
+
+    fun startScan() {
+        if (_scanning.value) return
+        _scanning.value = true
+        refreshStatus()
+        viewModelScope.launch {
+            delay(3500)
+            _scanning.value = false
+            _message.value = "LOCAL TELEMETRY REFRESHED"
+        }
+    }
+
+    // ---------- settings ----------
+    fun updateSettings(block: (LauncherSettings) -> LauncherSettings) {
+        viewModelScope.launch { settingsRepo.update(block) }
+    }
+
+    fun resetSettings() {
+        updateSettings { LauncherSettings() }
+        _message.value = "DEFAULT SETTINGS RESTORED"
+    }
+
+    fun toggleFavorite(key: String) {
+        viewModelScope.launch {
+            val cur = favorites.value
+            settingsRepo.setFavorites(if (key in cur) cur - key else cur + key)
+        }
+    }
+
+    // ---------- voice ----------
+    fun showVoiceExplain() { _voiceExplain.value = true }
+    fun dismissVoiceExplain() { _voiceExplain.value = false }
+    fun setVoiceState(s: VoiceState) { _voice.value = s }
+
+    fun handleVoice(text: String) {
+        when (val intent = VoiceCommandInterpreter.interpret(text)) {
+            is VoiceIntent.OpenApp -> openByName(intent.name)
+            is VoiceIntent.Search -> {
+                _query.value = intent.query
+                openDrawer(true)
+            }
+            VoiceIntent.ShowBattery -> _message.value = buildEnv().battery()
+            VoiceIntent.OpenTerminal -> _overlay.value = Overlay.TERMINAL
+            VoiceIntent.OpenSettings -> _overlay.value = Overlay.SETTINGS
+            is VoiceIntent.Unknown -> _message.value = "VOICE: UNRECOGNIZED \"${intent.heard.take(40)}\""
+        }
+    }
+
+    private fun openByName(name: String) {
+        when (val m = AppMatcher.match(name, _apps.value.map { it.ref() })) {
+            MatchResult.None -> _message.value = "VOICE: NO APP MATCHES \"$name\""
+            is MatchResult.Single -> launchKey(m.app.key)
+            is MatchResult.Multiple -> {
+                _message.value = "AMBIGUOUS: " + m.apps.take(4).joinToString(", ") { it.label } + " - PICK ONE"
+                _query.value = name
+                openDrawer(false)
+            }
+        }
+    }
+
+    // ---------- terminal ----------
+    private fun buildEnv(): TerminalEnv {
+        val s = _status.value ?: runCatching { statusReader.read() }.getOrNull()
+        val st = settings.value
+        val appList = _apps.value
+        val isHome = appRepo.isDefaultHome()
+        val version = appRepo.versionName()
+        return object : TerminalEnv {
+            override val apps: List<AppRef> = appList.map { it.ref() }
+            override fun time(): String = LocalTime.now().format(
+                DateTimeFormatter.ofPattern(if (st.is24h) "HH:mm:ss" else "hh:mm:ss a", Locale.getDefault())
+            )
+            override fun date(): String = LocalDate.now().format(
+                DateTimeFormatter.ofPattern("EEEE, dd MMM yyyy", Locale.getDefault())
+            )
+            override fun battery(): String = "BATTERY: " + (s?.batteryText() ?: "UNAVAILABLE")
+            override fun status(): List<String> = listOf(
+                "LAUNCHER: MATRIX CYBER LAUNCHER v$version",
+                "DEFAULT HOME: " + if (isHome) "YES" else "NO",
+                "APPS INDEXED: ${appList.size}",
+                "NETWORK: " + (s?.networkText() ?: "UNKNOWN"),
+                "BATTERY: " + (s?.batteryText() ?: "UNAVAILABLE"),
+                "RAM: " + (s?.memText() ?: "UNKNOWN"),
+                "UPTIME: " + (s?.uptimeText() ?: "UNKNOWN"),
+            )
+        }
+    }
+
+    fun submitTerminal(raw: String) {
+        val input = raw.trim()
+        if (input.isEmpty()) return
+        if (_history.value.lastOrNull() != input) _history.value = (_history.value + input).takeLast(50)
+        val res = CommandParser.execute(input, buildEnv())
+        val echo = "> " + input.filter { !it.isISOControl() }.take(CommandParser.MAX_INPUT)
+        if (res.action == TerminalAction.Clear) {
+            _terminal.value = emptyList()
+        } else {
+            _terminal.value = (_terminal.value + echo + res.lines).takeLast(400)
+        }
+        val action = res.action
+        when (action) {
+            is TerminalAction.Launch -> launchKey(action.key)
+            TerminalAction.OpenSettings -> _overlay.value = Overlay.SETTINGS
+            TerminalAction.OpenRadar -> _overlay.value = Overlay.RADAR
+            else -> Unit
+        }
+    }
+}
