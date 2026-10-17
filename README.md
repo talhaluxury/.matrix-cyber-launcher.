@@ -30,8 +30,10 @@ Implemented (written, not yet run on a device by the author):
 - Settings (DataStore): intensity, rain, scanlines, radar, sound, haptics, 12/24h, grid, icon size, terminal size, brightness, high contrast, reduce motion, boot sequence, device label, restore defaults.
 - Animations pause when the launcher is not visible; reduce-motion (app setting or system animation scale 0) shows static frames.
 
-Not implemented (on purpose, stated in the spec as optional): AppWidgetHost widgets, notification-listener feature, creating pinned shortcuts on the home screen (the favorites row and dock are the shortcut mechanism), launcher-level icon repositioning.
-The "panels" on the home screen are launcher panels, not Android widgets.
+Added in v1.1: real Android widgets (WDG button, AppWidgetHost; Android asks you to approve each bind), app shortcuts in the long-press menu (shown only while this is the default launcher), reorderable favorites (< > in Settings), button roles for screen readers.
+
+Not implemented: notification-listener feature (optional in the spec), accepting pinned shortcuts requested by other apps, free drag-and-drop icon placement, profiling results.
+The telemetry blocks on the home screen are launcher panels; the WDG screen holds the real widgets.
 
 ## Tests
 - Unit (run in CI): `gradle testDebugUnitTest` - command parser, app matcher, voice interpreter.

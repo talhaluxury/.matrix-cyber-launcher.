@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -86,6 +87,7 @@ fun Modifier.feedbackClick(onClick: () -> Unit, onLongClick: (() -> Unit)? = nul
         .combinedClickable(
             interactionSource = source,
             indication = LocalIndication.current,
+            role = Role.Button,
             onClick = {
                 fb.tap()
                 onClick()
@@ -105,7 +107,7 @@ fun Panel(modifier: Modifier = Modifier, title: String? = null, content: @Compos
     val border = MatrixColors.Neon.copy(alpha = if (fx.highContrast) 0.85f else 0.35f)
     Column(
         modifier
-            .background(MatrixColors.Surface.copy(alpha = 0.84f), PanelShape)
+            .background(MatrixColors.Surface.copy(alpha = 0.93f), PanelShape)
             .border(1.dp, border, PanelShape)
             .padding(12.dp)
     ) {
@@ -118,13 +120,13 @@ fun Panel(modifier: Modifier = Modifier, title: String? = null, content: @Compos
 }
 
 @Composable
-fun MatrixButton(text: String, modifier: Modifier = Modifier, accent: Color = MatrixColors.Neon, onClick: () -> Unit) {
+fun MatrixButton(text: String, modifier: Modifier = Modifier, accent: Color = MatrixColors.Neon, hPad: Dp = 10.dp, onClick: () -> Unit) {
     Box(
         modifier
             .border(1.dp, accent.copy(alpha = 0.7f), ButtonShape)
             .background(accent.copy(alpha = 0.08f), ButtonShape)
             .feedbackClick(onClick)
-            .padding(horizontal = 10.dp, vertical = 9.dp),
+            .padding(horizontal = hPad, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, color = accent, style = MaterialTheme.typography.labelSmall, maxLines = 1)

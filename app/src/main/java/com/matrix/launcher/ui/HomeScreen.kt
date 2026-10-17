@@ -135,7 +135,7 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
             if (favApps.isEmpty()) {
                 Text(
                     "FAVORITES EMPTY - LONG-PRESS AN APP IN THE DRAWER TO PIN IT",
-                    color = MatrixColors.Muted,
+                    color = MatrixColors.Neon2.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.labelSmall,
                 )
             } else {
@@ -156,14 +156,15 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MatrixButton("TERM", Modifier.weight(1f), onClick = { vm.openOverlay(Overlay.TERMINAL) })
-                MatrixButton("RADAR", Modifier.weight(1f), onClick = { vm.openOverlay(Overlay.RADAR) })
-                MatrixButton("DIAG", Modifier.weight(1f), onClick = { vm.openOverlay(Overlay.DIAGNOSTICS) })
-                MatrixButton("SET", Modifier.weight(1f), onClick = { vm.openOverlay(Overlay.SETTINGS) })
+                MatrixButton("TERM", Modifier.weight(1f), hPad = 2.dp, onClick = { vm.openOverlay(Overlay.TERMINAL) })
+                MatrixButton("RADAR", Modifier.weight(1f), hPad = 2.dp, onClick = { vm.openOverlay(Overlay.RADAR) })
+                MatrixButton("DIAG", Modifier.weight(1f), hPad = 2.dp, onClick = { vm.openOverlay(Overlay.DIAGNOSTICS) })
+                MatrixButton("WDG", Modifier.weight(1f), hPad = 2.dp, onClick = { vm.openOverlay(Overlay.WIDGETS) })
+                MatrixButton("SET", Modifier.weight(1f), hPad = 2.dp, onClick = { vm.openOverlay(Overlay.SETTINGS) })
                 if (settings.voiceEnabled) {
                     MatrixButton(
                         if (voice == VoiceState.LISTENING) "..." else "MIC", Modifier.weight(1f),
-                        accent = MatrixColors.Neon2, onClick = onVoice,
+                        accent = MatrixColors.Neon2, hPad = 2.dp, onClick = onVoice,
                     )
                 }
             }

@@ -4,7 +4,9 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
+import android.os.Process
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.Settings
@@ -75,6 +77,32 @@ class AppRepository(context: Context) {
         )
         true
     } catch (e: Exception) { false }
+
+    /** App-defined shortcuts (long-press actions). Only available while we are the default launcher. */
+    fun shortcutsFor(app: AppInfo): List<AppShortcut> = try {
+        val la = ctx.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        if (!la.hasShortcutHostPermission()) {
+            emptyList()
+        } else {
+            val q = LauncherApps.ShortcutQuery()
+                .setPackage(app.packageName)
+                .setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST)
+            (la.getShortcuts(q, Process.myUserHandle()) ?: emptyList())
+                .filter { it.isEnabled }
+                .map { AppShortcut(it.id, it.`package`, (it.shortLabel ?: it.id).toString()) }
+                .take(5)
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    fun startShortcut(s: AppShortcut): Boolean = try {
+        val la = ctx.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+        la.startShortcut(s.pkg, s.id, null, null, Process.myUserHandle())
+        true
+    } catch (e: Exception) {
+        false
+    }
 
     fun isDefaultHome(): Boolean {
         val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)

@@ -13,6 +13,7 @@ import com.matrix.launcher.core.VoiceCommandInterpreter
 import com.matrix.launcher.core.VoiceIntent
 import com.matrix.launcher.data.AppInfo
 import com.matrix.launcher.data.AppRepository
+import com.matrix.launcher.data.AppShortcut
 import com.matrix.launcher.data.DeviceStatus
 import com.matrix.launcher.data.DockEntry
 import com.matrix.launcher.data.LauncherSettings
@@ -35,7 +36,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS }
+enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS, WIDGETS }
 enum class VoiceState { IDLE, LISTENING }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,6 +50,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         settingsRepo.favorites.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val recents: StateFlow<List<String>> =
         settingsRepo.recents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val widgetIds: StateFlow<List<Int>> =
+        settingsRepo.widgets.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
     val apps: StateFlow<List<AppInfo>> = _apps.asStateFlow()
@@ -204,6 +208,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resetSettings() {
         updateSettings { LauncherSettings() }
         _message.value = "DEFAULT SETTINGS RESTORED"
+    }
+
+    fun addWidget(id: Int) {
+        viewModelScope.launch {
+            settingsRepo.setWidgets(widgetIds.value.filter { it != id } + id)
+            _message.value = "WIDGET ADDED"
+        }
+    }
+
+    fun removeWidget(id: Int) {
+        viewModelScope.launch { settingsRepo.setWidgets(widgetIds.value.filter { it != id }) }
+    }
+
+    fun startShortcut(s: AppShortcut) {
+        if (appRepo.startShortcut(s)) {
+            _overlay.value = Overlay.NONE
+            _query.value = ""
+        } else {
+            _message.value = "SHORTCUT UNAVAILABLE"
+        }
+    }
+
+    fun moveFavorite(key: String, delta: Int) {
+        viewModelScope.launch {
+            val cur = favorites.value.toMutableList()
+            val i = cur.indexOf(key)
+            val j = i + delta
+            if (i >= 0 && j in cur.indices) {
+                cur.removeAt(i)
+                cur.add(j, key)
+                settingsRepo.setFavorites(cur)
+            }
+        }
     }
 
     fun toggleFavorite(key: String) {

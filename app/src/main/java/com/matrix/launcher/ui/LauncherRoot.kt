@@ -1,5 +1,6 @@
 package com.matrix.launcher.ui
 
+import android.appwidget.AppWidgetProviderInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -35,11 +36,19 @@ import com.matrix.launcher.VoiceState
 import com.matrix.launcher.anim.Backdrop
 import com.matrix.launcher.system.Feedback
 import com.matrix.launcher.system.SoundFx
+import com.matrix.launcher.system.WidgetController
 import com.matrix.launcher.ui.theme.MatrixColors
 import kotlinx.coroutines.delay
 
 @Composable
-fun LauncherRoot(vm: MainViewModel, onVoiceClick: () -> Unit, onMicConfirmed: () -> Unit) {
+fun LauncherRoot(
+    vm: MainViewModel,
+    widgets: WidgetController,
+    onAddWidget: (AppWidgetProviderInfo) -> Unit,
+    onRemoveWidget: (Int) -> Unit,
+    onVoiceClick: () -> Unit,
+    onMicConfirmed: () -> Unit,
+) {
     val fx = LocalFx.current
     val settings by vm.settings.collectAsState()
     val overlay by vm.overlay.collectAsState()
@@ -91,6 +100,7 @@ fun LauncherRoot(vm: MainViewModel, onVoiceClick: () -> Unit, onMicConfirmed: ()
             AnimatedVisibility(overlay == Overlay.RADAR, enter = enter, exit = exit) { RadarScreen(vm) }
             AnimatedVisibility(overlay == Overlay.DIAGNOSTICS, enter = enter, exit = exit) { DiagnosticsScreen(vm) }
             AnimatedVisibility(overlay == Overlay.SETTINGS, enter = enter, exit = exit) { SettingsScreen(vm) }
+            AnimatedVisibility(overlay == Overlay.WIDGETS, enter = enter, exit = exit) { WidgetsScreen(vm, widgets, onAddWidget, onRemoveWidget) }
 
             val banner = when {
                 voice == VoiceState.LISTENING -> "LISTENING... SPEAK NOW"

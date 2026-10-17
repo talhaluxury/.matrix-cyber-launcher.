@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.matrix.launcher.MainViewModel
 import com.matrix.launcher.data.AppInfo
+import com.matrix.launcher.data.AppShortcut
 import com.matrix.launcher.ui.theme.MatrixColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AppDrawer(vm: MainViewModel, focusSearch: Boolean, onVoice: () -> Unit) {
@@ -198,11 +202,21 @@ private fun AppCell(app: AppInfo, vm: MainViewModel, iconDp: Int, list: Boolean)
     }
 }
 
-/** Long-press menu: open, app info, favorite toggle, uninstall (system confirmation). */
+/** Long-press menu: app shortcuts (when available), open, pin, app info, uninstall (system confirmation). */
 @Composable
 fun AppMenuDialog(app: AppInfo, isFavorite: Boolean, vm: MainViewModel) {
+    val shortcuts by produceState(emptyList<AppShortcut>(), app.key) {
+        value = withContext(Dispatchers.IO) { vm.appRepo.shortcutsFor(app) }
+    }
     Dialog(onDismissRequest = { vm.closeMenu() }) {
         Panel(Modifier.fillMaxWidth(), title = app.label.uppercase()) {
+            shortcuts.forEach { sc ->
+                MatrixButton("> " + sc.label.uppercase(), Modifier.fillMaxWidth(), accent = MatrixColors.Neon2, onClick = {
+                    vm.closeMenu()
+                    vm.startShortcut(sc)
+                })
+                Spacer(Modifier.height(6.dp))
+            }
             MatrixButton("OPEN", Modifier.fillMaxWidth(), onClick = { vm.closeMenu(); vm.launch(app) })
             Spacer(Modifier.height(6.dp))
             MatrixButton(if (isFavorite) "UNPIN FROM FAVORITES" else "PIN TO FAVORITES", Modifier.fillMaxWidth(), onClick = {

@@ -42,6 +42,7 @@ class SettingsRepository(context: Context) {
         val LABEL = stringPreferencesKey("label")
         val FAVORITES = stringPreferencesKey("favorites")
         val RECENTS = stringPreferencesKey("recents")
+        val WIDGETS = stringPreferencesKey("widgets")
     }
 
     private val safeData: Flow<Preferences> = store.data.catch { e ->
@@ -51,6 +52,17 @@ class SettingsRepository(context: Context) {
     val settings: Flow<LauncherSettings> = safeData.map { read(it) }.distinctUntilChanged()
     val favorites: Flow<List<String>> = safeData.map { split(it[Keys.FAVORITES]) }.distinctUntilChanged()
     val recents: Flow<List<String>> = safeData.map { split(it[Keys.RECENTS]) }.distinctUntilChanged()
+
+    val widgets: Flow<List<Int>> =
+        safeData.map { p -> split(p[Keys.WIDGETS]).mapNotNull { it.toIntOrNull() } }.distinctUntilChanged()
+
+    suspend fun setWidgets(list: List<Int>) {
+        try {
+            store.edit { p -> p[Keys.WIDGETS] = list.joinToString("\n") }
+        } catch (e: IOException) {
+            Log.w("Settings", "DataStore write failed", e)
+        }
+    }
 
     private fun split(s: String?): List<String> =
         if (s.isNullOrEmpty()) emptyList() else s.split("\n").filter { it.isNotBlank() }

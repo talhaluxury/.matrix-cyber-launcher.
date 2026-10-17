@@ -121,12 +121,16 @@ fun SettingsScreen(vm: MainViewModel) {
             item {
                 Panel(Modifier.fillMaxWidth(), title = "FAVORITES") {
                     if (favApps.isEmpty()) {
-                        Text("NONE. LONG-PRESS ANY APP TO PIN IT.", color = MatrixColors.Muted, style = MaterialTheme.typography.labelSmall)
+                        Text("NONE. LONG-PRESS ANY APP TO PIN IT. USE < > TO REORDER.", color = MatrixColors.Muted, style = MaterialTheme.typography.labelSmall)
                     }
                     favApps.forEach { app ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(app.label, color = MatrixColors.Text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1)
-                            MatrixButton("REMOVE", accent = ErrorColor, onClick = { vm.toggleFavorite(app.key) })
+                            MatrixButton("<", hPad = 8.dp, onClick = { vm.moveFavorite(app.key, -1) })
+                            Spacer(Modifier.width(4.dp))
+                            MatrixButton(">", hPad = 8.dp, onClick = { vm.moveFavorite(app.key, 1) })
+                            Spacer(Modifier.width(4.dp))
+                            MatrixButton("REMOVE", accent = ErrorColor, hPad = 6.dp, onClick = { vm.toggleFavorite(app.key) })
                         }
                     }
                 }
