@@ -40,6 +40,7 @@ class SettingsRepository(context: Context) {
         val LIST = booleanPreferencesKey("list")
         val VOICE = booleanPreferencesKey("voice")
         val LABEL = stringPreferencesKey("label")
+        val MATRIX_ICONS = booleanPreferencesKey("mticons")
         val FAVORITES = stringPreferencesKey("favorites")
         val RECENTS = stringPreferencesKey("recents")
         val WIDGETS = stringPreferencesKey("widgets")
@@ -86,6 +87,7 @@ class SettingsRepository(context: Context) {
             bootSequence = p[Keys.BOOT] ?: d.bootSequence,
             listView = p[Keys.LIST] ?: d.listView,
             voiceEnabled = p[Keys.VOICE] ?: d.voiceEnabled,
+            matrixIcons = p[Keys.MATRIX_ICONS] ?: d.matrixIcons,
             deviceLabel = p[Keys.LABEL] ?: d.deviceLabel,
         )
     }
@@ -107,6 +109,7 @@ class SettingsRepository(context: Context) {
         p[Keys.BOOT] = s.bootSequence
         p[Keys.LIST] = s.listView
         p[Keys.VOICE] = s.voiceEnabled
+        p[Keys.MATRIX_ICONS] = s.matrixIcons
         p[Keys.LABEL] = s.deviceLabel.take(32)
     }
 

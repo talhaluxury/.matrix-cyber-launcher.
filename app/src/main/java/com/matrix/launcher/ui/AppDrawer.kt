@@ -83,9 +83,8 @@ fun AppDrawer(vm: MainViewModel, focusSearch: Boolean, onVoice: () -> Unit) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .border(1.dp, MatrixColors.Neon.copy(alpha = 0.5f), ButtonShape)
-                .background(MatrixColors.Surface, ButtonShape)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .liquidGlass(ButtonShape)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(">", color = MatrixColors.Neon, style = MaterialTheme.typography.bodyLarge)

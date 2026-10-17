@@ -179,9 +179,8 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
                     Box(
                         Modifier
                             .size(settings.iconSize.dp)
-                            .border(1.dp, MatrixColors.Neon, ButtonShape)
-                            .background(MatrixColors.Neon.copy(alpha = 0.1f), ButtonShape)
-                            .feedbackClick({ vm.openDrawer(false) }),
+                            .feedbackClick({ vm.openDrawer(false) })
+                            .liquidGlass(IconShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text("APPS", color = MatrixColors.Neon, style = MaterialTheme.typography.labelSmall)

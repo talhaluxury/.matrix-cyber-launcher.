@@ -12,6 +12,7 @@ data class Fx(
     val reduceMotion: Boolean = false,
     val brightness: Float = 1f,
     val highContrast: Boolean = false,
+    val matrixIcons: Boolean = true,
 ) {
     val animate: Boolean get() = visible && !reduceMotion
     val fps: Int

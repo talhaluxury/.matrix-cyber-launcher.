@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +47,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -66,8 +69,8 @@ import kotlinx.coroutines.withContext
 val LocalFx = staticCompositionLocalOf { Fx() }
 val LocalFeedback = staticCompositionLocalOf { Feedback.None }
 
-val PanelShape = CutCornerShape(topStart = 0.dp, topEnd = 10.dp, bottomEnd = 0.dp, bottomStart = 10.dp)
-val ButtonShape = CutCornerShape(6.dp)
+val PanelShape = RoundedCornerShape(22.dp)
+val ButtonShape = RoundedCornerShape(50)
 val WarnColor = Color(0xFFFFC107)
 val ErrorColor = Color(0xFFFF4D4D)
 
@@ -77,7 +80,11 @@ val ErrorColor = Color(0xFFFF4D4D)
 fun Modifier.feedbackClick(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else 1f, label = "press")
+    val scale by animateFloatAsState(
+        if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.4f, stiffness = 500f),
+        label = "press",
+    )
     val fb = LocalFeedback.current
     return this
         .graphicsLayer {
@@ -104,12 +111,11 @@ fun Modifier.feedbackClick(onClick: () -> Unit, onLongClick: (() -> Unit)? = nul
 @Composable
 fun Panel(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     val fx = LocalFx.current
-    val border = MatrixColors.Neon.copy(alpha = if (fx.highContrast) 0.85f else 0.35f)
+    val strength = if (fx.highContrast) 1.6f else 1f
     Column(
         modifier
-            .background(MatrixColors.Surface.copy(alpha = 0.93f), PanelShape)
-            .border(1.dp, border, PanelShape)
-            .padding(12.dp)
+            .liquidGlass(PanelShape, strength = strength)
+            .padding(14.dp)
     ) {
         if (title != null) {
             Text(title, color = MatrixColors.Neon2, style = MaterialTheme.typography.labelSmall)
@@ -123,9 +129,8 @@ fun Panel(modifier: Modifier = Modifier, title: String? = null, content: @Compos
 fun MatrixButton(text: String, modifier: Modifier = Modifier, accent: Color = MatrixColors.Neon, hPad: Dp = 10.dp, onClick: () -> Unit) {
     Box(
         modifier
-            .border(1.dp, accent.copy(alpha = 0.7f), ButtonShape)
-            .background(accent.copy(alpha = 0.08f), ButtonShape)
             .feedbackClick(onClick)
+            .liquidGlass(ButtonShape, accent)
             .padding(horizontal = hPad, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -165,16 +170,24 @@ fun TypewriterText(text: String, animate: Boolean, color: Color, style: TextStyl
 
 @Composable
 fun AppIcon(app: AppInfo, repo: AppRepository, size: Dp, modifier: Modifier = Modifier) {
+    val fx = LocalFx.current
     val bmp by produceState<ImageBitmap?>(initialValue = repo.cachedIcon(app), key1 = app.key) {
         value = repo.cachedIcon(app) ?: withContext(Dispatchers.IO) { repo.loadIcon(app) }
     }
     val b = bmp
-    if (b != null) {
-        Image(bitmap = b, contentDescription = app.label, modifier = modifier.size(size), contentScale = ContentScale.Fit)
-    } else {
-        Box(modifier.size(size).border(1.dp, MatrixColors.Muted, PanelShape), contentAlignment = Alignment.Center) {
+    Box(modifier.size(size).liquidGlass(IconShape), contentAlignment = Alignment.Center) {
+        if (b != null) {
+            Image(
+                bitmap = b,
+                contentDescription = app.label,
+                modifier = Modifier.fillMaxSize().padding(size * 0.06f).clip(IconShape),
+                contentScale = ContentScale.Fit,
+                colorFilter = if (fx.matrixIcons) MatrixIconFilter else null,
+            )
+        } else {
             Text(app.label.take(1).uppercase(), color = MatrixColors.Neon, style = MaterialTheme.typography.bodyLarge)
         }
+        Box(Modifier.matchParentSize().glassSheen(IconShape))
     }
 }
 
@@ -188,7 +201,7 @@ fun OverlayScaffold(
     Column(
         Modifier
             .fillMaxSize()
-            .background(MatrixColors.Background.copy(alpha = 0.95f))
+            .background(MatrixColors.Background.copy(alpha = 0.985f))
             .pointerInput(Unit) { detectTapGestures { } }
             .systemBarsPadding()
             .imePadding()

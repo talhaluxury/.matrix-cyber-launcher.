@@ -76,6 +76,7 @@ fun SettingsScreen(vm: MainViewModel) {
                 Panel(Modifier.fillMaxWidth(), title = "DISPLAY") {
                     SwitchRow("24-HOUR CLOCK", s.is24h) { v -> upd { it.copy(is24h = v) } }
                     SwitchRow("HIGH CONTRAST", s.highContrast) { v -> upd { it.copy(highContrast = v) } }
+                    SwitchRow("MATRIX GREEN ICON TINT", s.matrixIcons) { v -> upd { it.copy(matrixIcons = v) } }
                     Text("THEME BRIGHTNESS", color = MatrixColors.Text, style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = s.brightness,

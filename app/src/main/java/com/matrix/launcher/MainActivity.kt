@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 reduceMotion = s.reduceMotion || systemReduce,
                 brightness = s.brightness,
                 highContrast = s.highContrast,
+                matrixIcons = s.matrixIcons,
             )
             CompositionLocalProvider(LocalFx provides fx) {
                 MatrixTheme {

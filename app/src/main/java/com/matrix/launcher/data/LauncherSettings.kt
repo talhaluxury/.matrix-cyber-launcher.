@@ -19,5 +19,6 @@ data class LauncherSettings(
     val bootSequence: Boolean = true,
     val listView: Boolean = false,
     val voiceEnabled: Boolean = true,
+    val matrixIcons: Boolean = true,
     val deviceLabel: String = "",
 )
