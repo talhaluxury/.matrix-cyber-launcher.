@@ -2,6 +2,7 @@ package com.matrix.launcher.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -135,7 +136,7 @@ private fun PinEntry(vm: MainViewModel) {
 }
 
 @Composable
-private fun VaultContent(vm: MainViewModel) {
+private fun ColumnScope.VaultContent(vm: MainViewModel) {
     val apps by vm.apps.collectAsState()
     val keys by vm.privateApps.collectAsState()
     var picking by remember { mutableStateOf(false) }
