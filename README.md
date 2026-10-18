@@ -17,6 +17,22 @@ Termux compilation is possible only if you manage to install an aarch64 Android 
 2. Press Home and choose MATRIX CYBER LAUNCHER, or Settings -> Apps -> Default apps -> Home app.
 3. To go back: the same screen, choose your old launcher.
 
+## Network toolkit (v1.5) - NET button / terminal
+Written WITHOUT a compiler or device (the author's sandbox had no Gradle, Android SDK or internet). Nothing below has been built, unit-tested or run on a phone yet: push to GitHub and read the **Build Debug APK** run. Expect to fix a few compile errors on the first run.
+
+Open it with the **NET** button on the home screen. Three tabs, all real (no simulated results):
+- **DISCOVER** - shows this phone's connection (transport, IPv4/prefix, gateway, DNS servers from Android). You pick a private LAN range in CIDR (/22 to /30, RFC1918 + link-local only; the phone's own subnet is pre-filled). Each address gets one echo probe (`InetAddress.isReachable`: ICMP where Android allows it, else TCP echo), then, only if silent, quick TCP connects to 443/80/53. At most 24 probes run at once. Shows IP, reverse-DNS name (else "Unknown"), how it was detected, response time and discovery time; MAC is always "Unknown" (Android 10+ blocks it). Progress, cancel, partial results kept.
+- **DIAGNOSE** - connectivity/transport, Android's own internet-validation flag, DNS lookup time, TCP connect latency (3 samples, lookup excluded), echo reachability, and a basic internet check (TCP connect to 1.1.1.1:443). A value is shown only when that test succeeded; failures give a specific message (DNS failure, timeout, refused, unreachable). Session history with timestamps. Each test can run alone, or run the full sequence.
+- **PORTS** - TCP connect check of up to 64 ports on a host name/IPv4 you enter (editable list plus common-port chips). States: REACHABLE / REFUSED / TIMED OUT / UNREACHABLE / ERROR. 6 parallel connects, 2.5 s timeout each, cancel any time, summary + elapsed + finish time. Nothing is sent after connecting, so no service/version/vulnerability is ever claimed.
+
+The radar sweep angle equals real progress (done/total); dots appear only for results that actually came back. There is no looping decorative animation in this screen, so it costs no battery when idle; reduce-motion removes the easing too.
+
+Safety rails: a confirmation dialog ("I am authorized") before every active test; one operation at a time (no overlapping/duplicate scans); scans stop when the launcher leaves the foreground; discovery refuses public ranges; no stealth/evasion/exploit/credential features; nothing is uploaded. **SAVE REPORT** writes a .txt under the app's own external files folder (`Android/data/com.matrix.launcher/files/reports/`); **SHARE** opens Android's share sheet only when you tap it. History is in memory only.
+
+Terminal commands: `NETWORK`, `NETWORK STATUS`, `NETWORK DISCOVER [CIDR]`, `NETWORK DIAGNOSTICS`, `DNS <host>`, `PORTCHECK <host> <ports>`, `SCAN STATUS`, `SCAN CANCEL`, `REPORT`. Discover / diagnostics / portcheck print an authorization notice and run only if you type `YES`. `DNS` is a plain name lookup and starts directly. Plain `SCAN` is still the old visual effect. If a required target or port is missing, the command prints what is required and its usage.
+
+Limits you should know: results are best-effort (firewalls, Wi-Fi client isolation, sleeping devices, Android restrictions). `isReachable` and reverse DNS cannot be interrupted by Android, so cancel can take a second or two. Wi-Fi name (SSID) is not shown (needs location permission, deliberately not requested). Only unit tests and loopback integration tests exist; no instrumented test for the NET screen.
+
 ## Features and honest status
 Implemented (written, not yet run on a device by the author):
 - HOME intent filter; real app discovery via PackageManager (`<queries>`, no QUERY_ALL_PACKAGES); real launch intents; removed apps handled.
@@ -47,7 +63,7 @@ Not implemented: notification-listener feature (optional in the spec), accepting
 The telemetry blocks on the home screen are launcher panels; the WDG screen holds the real widgets.
 
 ## Tests
-- Unit (run in CI): `gradle testDebugUnitTest` - command parser, app matcher, voice interpreter.
+- Unit (run in CI): `gradle testDebugUnitTest` - command parser (incl. network commands), app matcher, voice interpreter, network input validation, port-state classification, report formatting, plus loopback-socket integration tests for the port checker and discovery engine.
 - Instrumented smoke tests (need a phone/emulator): `gradle connectedDebugAndroidTest` - HOME registration and activity start.
 - Manual checklist: drawer shows apps, search opens an app, favorites survive restart, deny mic and verify the rest still works, toggle reduce motion, uninstall an app while launcher is open.
 
@@ -59,4 +75,4 @@ The telemetry blocks on the home screen are launcher panels; the WDG screen hold
 Never commit the keystore or passwords (`.gitignore` already blocks *.jks).
 
 ## Privacy
-No analytics, ads, accounts or tracking. Only permissions: ACCESS_NETWORK_STATE (read-only) and RECORD_AUDIO (asked only when you tap MIC). Speech recognition is done by your phone's speech service, which may use the internet.
+No analytics, ads, accounts or tracking. Only permissions: ACCESS_NETWORK_STATE (read-only), INTERNET (optional remote AI + the NET toolkit, which acts only when you start a test) and RECORD_AUDIO (asked only when you tap MIC). Speech recognition is done by your phone's speech service, which may use the internet.

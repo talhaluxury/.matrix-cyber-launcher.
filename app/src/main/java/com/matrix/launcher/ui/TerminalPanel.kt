@@ -77,9 +77,9 @@ fun TerminalPanel(vm: MainViewModel) {
         hIdx = -1
     }
 
-    OverlayScaffold(title = "TERMINAL // SIMULATED SHELL", onClose = { vm.back() }) {
+    OverlayScaffold(title = "TERMINAL // COMMAND CENTER", onClose = { vm.back() }) {
         Text(
-            "Launcher commands only. No shell, no network, no system access.",
+            "Launcher commands + opt-in network tools (NETWORK / DNS / PORTCHECK). Active tests ask you to confirm first. No shell.",
             color = MatrixColors.Muted, style = MaterialTheme.typography.labelSmall,
         )
         Spacer(Modifier.height(6.dp))

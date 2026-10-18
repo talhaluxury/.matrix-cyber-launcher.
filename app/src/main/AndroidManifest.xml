@@ -2,8 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Used ONLY by the optional remote AI assistant, which is off by default and sends nothing until the user
-         enables it and enters their own endpoint and key. -->
+    <!-- Used by (1) the optional remote AI assistant, off by default, and (2) the NET toolkit (LAN discovery, DNS,
+         latency and TCP port checks), which only runs after the user starts a test and confirms authorization.
+         No location, Wi-Fi-state, contacts or storage permissions are needed. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Declared, but only REQUESTED when the user taps the mic button (after an explanation). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

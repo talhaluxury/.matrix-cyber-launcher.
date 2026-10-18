@@ -9,6 +9,7 @@ import com.matrix.launcher.core.CommandParser
 import com.matrix.launcher.core.LocalAssistant
 import com.matrix.launcher.core.PinHasher
 import com.matrix.launcher.core.MatchResult
+import com.matrix.launcher.core.NetRequest
 import com.matrix.launcher.core.TerminalAction
 import com.matrix.launcher.core.TerminalEnv
 import com.matrix.launcher.core.VoiceCommandInterpreter
@@ -23,6 +24,7 @@ import com.matrix.launcher.data.PinState
 import com.matrix.launcher.system.RemoteAi
 import android.os.SystemClock
 import com.matrix.launcher.data.SettingsRepository
+import com.matrix.launcher.net.NetToolkit
 import com.matrix.launcher.system.SystemStatusReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,7 +43,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS, WIDGETS, SHOW, PRIVATE, ASSISTANT }
+enum class Overlay { NONE, DRAWER, TERMINAL, RADAR, DIAGNOSTICS, SETTINGS, WIDGETS, SHOW, PRIVATE, ASSISTANT, NETWORK }
 enum class VoiceState { IDLE, LISTENING }
 
 private const val PANELS = 3
@@ -50,6 +52,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val appRepo = AppRepository(application)
     private val settingsRepo = SettingsRepository(application)
     private val statusReader = SystemStatusReader(application)
+
+    /** Network discovery / diagnostics / port checks. One operation at a time; everything stays on the device. */
+    val net = NetToolkit(application, viewModelScope)
+    private var pendingNet: NetRequest? = null
 
     val settings: StateFlow<LauncherSettings> =
         settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, LauncherSettings())
@@ -197,6 +203,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (res.handled) {
             if (res.action == TerminalAction.Clear) _chat.value = emptyList()
             else _chat.value = (_chat.value + res.lines).takeLast(200)
+            val act = res.action
+            if (act is TerminalAction.Net) {
+                _chat.value = (_chat.value + "NETWORK TOOLS RUN IN THE TERMINAL (THEY NEED YOUR CONFIRMATION). OPENING IT.").takeLast(200)
+                _overlay.value = Overlay.TERMINAL
+            }
             performAction(res.action)
             return
         }
@@ -219,6 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        net.onLog = { line -> appendTerminal(listOf(line)) }
         viewModelScope.launch {
             val s = runCatching { settingsRepo.settings.first() }.getOrDefault(LauncherSettings())
             _boot.value = s.bootSequence
@@ -437,18 +449,94 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun appendTerminal(lines: List<String>) {
+        if (lines.isEmpty()) return
+        _terminal.value = (_terminal.value + lines).takeLast(400)
+    }
+
     fun submitTerminal(raw: String) {
         val input = raw.trim()
         if (input.isEmpty()) return
         if (_history.value.lastOrNull() != input) _history.value = (_history.value + input).takeLast(50)
-        val res = CommandParser.execute(input, buildEnv())
         val echo = "> " + input.filter { !it.isISOControl() }.take(CommandParser.MAX_INPUT)
+
+        // A network test is waiting for the user's authorization answer.
+        val pending = pendingNet
+        if (pending != null) {
+            pendingNet = null
+            appendTerminal(listOf(echo))
+            if (input.equals("YES", ignoreCase = true)) {
+                runNetRequest(pending)
+            } else {
+                appendTerminal(listOf("NOT CONFIRMED. NO NETWORK ACTIVITY WAS STARTED."))
+            }
+            return
+        }
+
+        val res = CommandParser.execute(input, buildEnv())
         if (res.action == TerminalAction.Clear) {
             _terminal.value = emptyList()
         } else {
             _terminal.value = (_terminal.value + echo + res.lines).takeLast(400)
         }
         performAction(res.action)
+    }
+
+    // ---------- network toolkit (terminal side) ----------
+
+    private fun describeNet(r: NetRequest): String = when (r) {
+        is NetRequest.Discover -> "PROBE EVERY ADDRESS IN ${r.range ?: "YOUR CURRENT SUBNET"} (PING + A FEW TCP CONNECTS)"
+        NetRequest.Diagnostics -> "RUN DNS, LATENCY AND REACHABILITY TESTS (CONTACTS EXAMPLE.COM AND 1.1.1.1)"
+        is NetRequest.PortCheck -> "TRY TCP CONNECTIONS TO ${r.host} ON ${r.ports.size} PORT(S)"
+        else -> "RUN A NETWORK TEST"
+    }
+
+    private fun handleNet(r: NetRequest) {
+        when (r) {
+            NetRequest.Status -> appendTerminal(net.statusLines())
+            NetRequest.ScanStatus -> appendTerminal(net.scanStatusLines())
+            NetRequest.ScanCancel -> appendTerminal(listOf(if (net.cancel()) "CANCEL REQUESTED." else "NOTHING IS RUNNING."))
+            NetRequest.Report -> viewModelScope.launch {
+                val lines = withContext(Dispatchers.IO) { net.saveReportLines() }
+                appendTerminal(lines)
+            }
+            is NetRequest.Dns -> runNetRequest(r) // plain name lookup, not an active scan
+            else -> {
+                if (net.activeOp.value != com.matrix.launcher.net.NetOp.NONE) {
+                    appendTerminal(listOf("ANOTHER NETWORK TASK IS RUNNING. USE SCAN STATUS OR SCAN CANCEL."))
+                    return
+                }
+                pendingNet = r
+                appendTerminal(
+                    listOf(
+                        "AUTHORIZATION REQUIRED",
+                        "THIS WILL: ${describeNet(r)}",
+                        "ONLY TEST NETWORKS AND HOSTS YOU OWN OR HAVE PERMISSION TO TEST.",
+                        "TYPE YES TO CONFIRM. ANYTHING ELSE CANCELS.",
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun runNetRequest(r: NetRequest) {
+        val error: String? = when (r) {
+            is NetRequest.Discover -> {
+                val range = r.range ?: net.suggestedRange()?.toString()
+                if (range == null) "NO PRIVATE SUBNET FOUND. GIVE ONE: NETWORK DISCOVER 192.168.1.0/24" else net.startDiscovery(range)
+            }
+            NetRequest.Diagnostics -> {
+                appendTerminal(listOf("DIAGNOSTICS STARTED (CONNECTIVITY, INTERNET, DNS, LATENCY, REACHABILITY)."))
+                net.startDiagnostics("example.com", null)
+            }
+            is NetRequest.Dns -> {
+                appendTerminal(listOf("DNS LOOKUP: ${r.host} ..."))
+                net.startDiagnostics(r.host, com.matrix.launcher.net.DiagKind.DNS)
+            }
+            is NetRequest.PortCheck -> net.startPortCheck(r.host, r.ports)
+            else -> null
+        }
+        if (error != null) appendTerminal(listOf(error))
     }
 
     private fun performAction(action: TerminalAction) {
@@ -460,6 +548,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             TerminalAction.OpenShow -> _overlay.value = Overlay.SHOW
             TerminalAction.OpenGlobe -> { _panel.value = 1; _overlay.value = Overlay.NONE }
             is TerminalAction.SetTheme -> updateSettings { it.copy(theme = action.id) }
+            is TerminalAction.Net -> handleNet(action.request)
             else -> Unit
         }
     }

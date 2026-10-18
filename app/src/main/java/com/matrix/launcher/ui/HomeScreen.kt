@@ -233,6 +233,7 @@ fun HomeScreen(vm: MainViewModel, onVoice: () -> Unit) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MatrixButton("AI", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.ASSISTANT) })
                 MatrixButton("SHOW", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.SHOW) })
+                MatrixButton("NET", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.NETWORK) })
                 MatrixButton("VAULT", Modifier.weight(1f), hPad = 2.dp, accent = MatrixColors.Neon2, onClick = { vm.openOverlay(Overlay.PRIVATE) })
             }
 

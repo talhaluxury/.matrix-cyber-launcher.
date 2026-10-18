@@ -1,5 +1,7 @@
 package com.matrix.launcher.core
 
+import com.matrix.launcher.net.NetValidation
+
 sealed class TerminalAction {
     object None : TerminalAction()
     object Clear : TerminalAction()
@@ -10,6 +12,20 @@ sealed class TerminalAction {
     object OpenGlobe : TerminalAction()
     data class SetTheme(val id: String) : TerminalAction()
     data class Launch(val key: String) : TerminalAction()
+    /** Network toolkit request. Active tests are only started after the user confirms authorization. */
+    data class Net(val request: NetRequest) : TerminalAction()
+}
+
+sealed class NetRequest {
+    object Status : NetRequest()
+    /** [range] is a CIDR text, or null to use the phone's own subnet. */
+    data class Discover(val range: String?) : NetRequest()
+    object Diagnostics : NetRequest()
+    data class Dns(val host: String) : NetRequest()
+    data class PortCheck(val host: String, val ports: List<Int>) : NetRequest()
+    object ScanStatus : NetRequest()
+    object ScanCancel : NetRequest()
+    object Report : NetRequest()
 }
 
 data class TerminalResult(val lines: List<String>, val action: TerminalAction = TerminalAction.None)
@@ -27,12 +43,13 @@ interface TerminalEnv {
 
 /**
  * Safe command parser. It only ever returns text and a small set of launcher actions.
- * There is no shell, no network and no file access behind these commands.
+ * There is no shell behind these commands. The only network activity is the opt-in network toolkit
+ * (NETWORK/DNS/PORTCHECK), which the app asks the user to confirm before any active test starts.
  */
 object CommandParser {
     const val MAX_INPUT = 200
 
-    val COMMANDS = listOf("HELP", "APPS", "SEARCH", "OPEN", "TIME", "DATE", "BATTERY", "STORAGE", "NETWORK", "STATUS", "RADAR", "SCAN", "THEME", "GLOBE", "SHOW", "SETTINGS", "CLEAR")
+    val COMMANDS = listOf("HELP", "APPS", "SEARCH", "OPEN", "TIME", "DATE", "BATTERY", "STORAGE", "NETWORK", "STATUS", "RADAR", "SCAN", "THEME", "GLOBE", "SHOW", "SETTINGS", "CLEAR", "DNS", "PORTCHECK", "REPORT")
 
     /** Persisted ids of the built-in themes (must match ui.theme.ThemeId names). */
     val THEMES = listOf("MATRIX_GREEN", "STEALTH_BLACK", "CYAN_CYBER", "RED_ALERT", "MINIMAL_HUD")
@@ -89,11 +106,11 @@ object CommandParser {
             "DATE" -> TerminalResult(listOf("DATE: ${env.date()}"))
             "BATTERY" -> TerminalResult(listOf(env.battery()))
             "STORAGE" -> TerminalResult(listOf(env.storage()))
-            "NETWORK" -> TerminalResult(listOf(env.network(), "NOTE: CONNECTION TYPE ONLY. NO TRAFFIC IS INSPECTED."))
-            "SCAN" -> TerminalResult(
-                listOf("SCAN: VISUAL ANIMATION (SIMULATED) + REAL LOCAL TELEMETRY REFRESH", "NO NETWORK OR DEVICE IS PROBED."),
-                TerminalAction.Scan,
-            )
+            "NETWORK" -> networkCommand(arg, env)
+            "SCAN" -> scanCommand(arg)
+            "DNS" -> dnsCommand(arg)
+            "PORTCHECK" -> portCheckCommand(arg)
+            "REPORT" -> TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Report))
             "THEME" -> {
                 if (arg.isEmpty()) {
                     TerminalResult(
@@ -116,6 +133,67 @@ object CommandParser {
         }
     }
 
+    private fun networkCommand(arg: String, env: TerminalEnv): TerminalResult {
+        if (arg.isEmpty()) {
+            return TerminalResult(
+                listOf(
+                    env.network(),
+                    "NOTE: CONNECTION TYPE ONLY. NO TRAFFIC IS INSPECTED.",
+                    "MORE: NETWORK STATUS | NETWORK DISCOVER [CIDR] | NETWORK DIAGNOSTICS",
+                ),
+            )
+        }
+        val tokens = arg.split(Regex("\\s+"))
+        return when (tokens[0].uppercase()) {
+            "STATUS" -> TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Status))
+            "DISCOVER" -> {
+                if (tokens.size > 2) return TerminalResult(listOf("USAGE: NETWORK DISCOVER [CIDR]  (EXAMPLE: NETWORK DISCOVER 192.168.1.0/24)"))
+                if (tokens.size == 2) {
+                    if (NetValidation.parseCidr(tokens[1]) == null) {
+                        return TerminalResult(listOf("INVALID RANGE \"${tokens[1].take(40)}\". USE CIDR /22../30, EXAMPLE: 192.168.1.0/24"))
+                    }
+                    TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Discover(tokens[1])))
+                } else {
+                    TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Discover(null)))
+                }
+            }
+            "DIAGNOSTICS", "DIAG" -> TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Diagnostics))
+            else -> TerminalResult(listOf("USAGE: NETWORK [STATUS | DISCOVER [CIDR] | DIAGNOSTICS]"))
+        }
+    }
+
+    private fun scanCommand(arg: String): TerminalResult {
+        return when (arg.uppercase()) {
+            "" -> TerminalResult(
+                listOf("SCAN: VISUAL ANIMATION (SIMULATED) + REAL LOCAL TELEMETRY REFRESH", "NO NETWORK OR DEVICE IS PROBED."),
+                TerminalAction.Scan,
+            )
+            "STATUS" -> TerminalResult(emptyList(), TerminalAction.Net(NetRequest.ScanStatus))
+            "CANCEL" -> TerminalResult(emptyList(), TerminalAction.Net(NetRequest.ScanCancel))
+            else -> TerminalResult(listOf("USAGE: SCAN | SCAN STATUS | SCAN CANCEL"))
+        }
+    }
+
+    private fun dnsCommand(arg: String): TerminalResult {
+        if (arg.isEmpty()) return TerminalResult(listOf("TARGET REQUIRED.", "USAGE: DNS <HOSTNAME>  (EXAMPLE: DNS example.com)"))
+        if (arg.contains(' ') || !NetValidation.isValidHostname(arg)) {
+            return TerminalResult(listOf("INVALID HOSTNAME \"${arg.take(60)}\".", "USAGE: DNS <HOSTNAME>"))
+        }
+        return TerminalResult(emptyList(), TerminalAction.Net(NetRequest.Dns(arg)))
+    }
+
+    private fun portCheckCommand(arg: String): TerminalResult {
+        val usage = "USAGE: PORTCHECK <HOST> <PORT[,PORT|A-B...]>  (EXAMPLE: PORTCHECK 192.168.1.1 80,443)"
+        if (arg.isEmpty()) return TerminalResult(listOf("TARGET REQUIRED.", usage))
+        val tokens = arg.split(Regex("\\s+"), limit = 2)
+        val host = tokens[0]
+        if (!NetValidation.isValidTarget(host)) return TerminalResult(listOf("INVALID TARGET \"${host.take(60)}\".", usage))
+        if (tokens.size < 2) return TerminalResult(listOf("PORT REQUIRED.", usage))
+        val parsed = NetValidation.parsePortList(tokens[1])
+        if (parsed.error != null) return TerminalResult(listOf(parsed.error, usage))
+        return TerminalResult(emptyList(), TerminalAction.Net(NetRequest.PortCheck(host, parsed.ports)))
+    }
+
     private val HELP = listOf(
         "COMMANDS:",
         "  HELP            SHOW THIS LIST",
@@ -126,6 +204,14 @@ object CommandParser {
         "  BATTERY         BATTERY LEVEL",
         "  STORAGE         INTERNAL STORAGE FREE/TOTAL",
         "  NETWORK         CONNECTION TYPE (NO TRAFFIC DATA)",
+        "  NETWORK STATUS  IP, GATEWAY, DNS SERVERS (LOCAL INFO)",
+        "  NETWORK DISCOVER [CIDR]  FIND REACHABLE LAN DEVICES",
+        "  NETWORK DIAGNOSTICS      DNS, LATENCY, INTERNET CHECKS",
+        "  DNS <HOST>      RESOLVE A NAME AND TIME THE LOOKUP",
+        "  PORTCHECK <HOST> <PORTS> TCP PORT REACHABILITY (YOUR HOSTS ONLY)",
+        "  SCAN STATUS     PROGRESS OF A RUNNING NETWORK TASK",
+        "  SCAN CANCEL     STOP A RUNNING NETWORK TASK",
+        "  REPORT          SAVE LAST RESULTS TO A LOCAL FILE",
         "  STATUS          LOCAL LAUNCHER STATUS",
         "  SCAN            VISUAL SCAN + REAL TELEMETRY REFRESH",
         "  THEME [NAME]    LIST OR SWITCH THEMES",
@@ -135,5 +221,6 @@ object CommandParser {
         "  SETTINGS        LAUNCHER SETTINGS",
         "  CLEAR           CLEAR OUTPUT",
         "NOTE: THIS IS NOT A SHELL. NO SYSTEM COMMANDS RUN.",
+        "NETWORK TESTS ASK FOR YOUR CONFIRMATION FIRST. TEST ONLY NETWORKS/HOSTS YOU OWN OR MAY TEST.",
     )
 }

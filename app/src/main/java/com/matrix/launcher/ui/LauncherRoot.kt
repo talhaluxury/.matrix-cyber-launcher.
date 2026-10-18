@@ -76,7 +76,12 @@ fun LauncherRoot(
             delay(5000)
         }
     }
-    LaunchedEffect(fx.visible) { if (!fx.visible) vm.lockPrivate() }
+    LaunchedEffect(fx.visible) {
+        if (!fx.visible) {
+            vm.lockPrivate()
+            vm.net.cancelIfRunning() // unattended network tasks are stopped when the launcher leaves the foreground
+        }
+    }
     LaunchedEffect(message) {
         if (message != null) {
             delay(3500)
@@ -108,6 +113,7 @@ fun LauncherRoot(
             AnimatedVisibility(overlay == Overlay.ASSISTANT, enter = enter, exit = exit) { AssistantScreen(vm, onVoiceClick) }
             AnimatedVisibility(overlay == Overlay.PRIVATE, enter = enter, exit = exit) { PrivatePanel(vm) }
             AnimatedVisibility(overlay == Overlay.SHOW, enter = enter, exit = exit) { ShowModeScreen(vm) }
+            AnimatedVisibility(overlay == Overlay.NETWORK, enter = enter, exit = exit) { NetworkScreen(vm) }
 
             val banner = when {
                 voice == VoiceState.LISTENING -> "LISTENING... SPEAK NOW"
